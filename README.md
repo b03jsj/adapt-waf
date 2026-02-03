@@ -21,13 +21,13 @@ access： At the access phase, the client IP is evaluated against the configured
 log： At the log phase, the request payload is minimally tokenized and evaluated using a weight-based scoring model. Requests that hit the blocking range are recorded and used to update the blacklist.
 
 ## shard.dict
-# 攻击训练
+### 攻击训练
 lua_shared_dict waf_train 20m;
-# 攻击样本token权重
+### 攻击样本token权重
 lua_shared_dict waf_w 20m;
-# 样本置信度
+### 样本置信度
 lua_shared_dict waf_c 20m;
-# 拦截
+### 拦截
 lua_shared_dict waf_block 20m;
 
 ## Performance
