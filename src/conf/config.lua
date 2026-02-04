@@ -33,7 +33,11 @@ local waf         = {
     }
 }
 
-local config = {waf = waf}
+local log = {
+    log_level = 4  -- DEBUG 1   INFO 2   WARN 3   ERROR 4
+}
+
+local config = {waf = waf, log = log}
 
 
 return config

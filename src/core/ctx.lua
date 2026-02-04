@@ -19,7 +19,7 @@ local function get_remote_ip(api_ctx)
     end
 
     if not real_ip or '' == real_ip then
-        real_ip = ngx.var.remote_addr
+        real_ip = _ngx.var.remote_addr
     end
 
     return real_ip

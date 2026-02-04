@@ -2,6 +2,7 @@ local loader           = require("waf.runtime.model_loader")
 local ngram            = require("waf.runtime.ngram_boost")
 local confidence       = require("waf.runtime.confidence")
 local structure        = require("waf.runtime.structure")
+local logger           = require("core.logger")
 
 local _M = {}
 
@@ -64,13 +65,18 @@ function _M.score(api_ctx, attack_type)
     local max_tokens = nil
     local max_bucket = nil
 
+    local bucket = {
+        word = 0,
+        comment = 0,
+        op = 0,
+        num = 0
+    }
+
     for _, tokens in pairs(api_ctx.params_tokens or {}) do
-        local bucket = {
-            word = 0,
-            comment = 0,
-            op = 0,
-            num = 0
-        }
+        bucket.word    = 0
+        bucket.comment = 0
+        bucket.op      = 0
+        bucket.num     = 0
 
         for t in pairs(tokens) do
             local tp, val = token_type(t)
@@ -79,19 +85,20 @@ function _M.score(api_ctx, attack_type)
             end
         end
 
-        print("waf防护评分，word 贡献值：" .. tostring(bucket.word))
-        print("waf防护评分，comment 贡献值：" .. tostring(bucket.comment))
-        print("waf防护评分，op 贡献值：" .. tostring(bucket.op))
-        print("waf防护评分，num 贡献值：" .. tostring(bucket.num))
+        logger.debug("waf防护评分，word 贡献值：" , bucket.word)
+        logger.debug("waf防护评分，comment 贡献值：" , bucket.comment)
+        logger.debug("waf防护评分，op 贡献值：" , bucket.op)
+        logger.debug("waf防护评分，num 贡献值：" , bucket.num)
 
         -- 应用上限
+        local limit = LIMIT[attack_type]
         local base =
-            math.min(bucket.word,    LIMIT[attack_type].word) +
-            math.min(bucket.comment, LIMIT[attack_type].comment) +
-            math.min(bucket.op,      LIMIT[attack_type].op) +
-            math.min(bucket.num,     LIMIT[attack_type].num)
+            math.min(bucket.word,    limit.word) +
+            math.min(bucket.comment, limit.comment) +
+            math.min(bucket.op,      limit.op) +
+            math.min(bucket.num,     limit.num)
 
-        print("waf防护评分，应用上限后贡献值：" .. tostring(base))
+        logger.debug("waf防护评分，应用上限后贡献值：" , base)
 
         -- 补充执行符号匹配，按等级放大
         local structure, structure_score  = structure.has_exec_structure(tokens, attack_type)
@@ -106,11 +113,11 @@ function _M.score(api_ctx, attack_type)
             end
         end
 
-        print("waf防护评分，补充执行组合符号匹配后贡献值：" .. tostring(base))
+        logger.debug("waf防护评分，补充执行组合符号匹配后贡献值：" , base)
 
         local score = ngram.apply(tokens, base, attack_type)
 
-        print("waf防护评分，结构性放大后贡献值：" .. tostring(score))
+        logger.debug("waf防护评分，结构性放大后贡献值：" , score)
 
         -- 取最大参数得分
         if score > max_score then
@@ -130,8 +137,8 @@ function _M.score(api_ctx, attack_type)
         api_ctx.waf_features  = features
     end
 
-    print("waf防护评分，最终得分：" .. tostring(max_score))
-    print("waf防护评分，置信度：" .. tostring(confidence_score))
+    logger.debug("waf防护评分，最终得分：" , max_score)
+    logger.debug("waf防护评分，置信度：" , confidence_score)
 
     return max_score, confidence_score
 end

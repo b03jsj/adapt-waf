@@ -1,4 +1,5 @@
-local xss_kw    = require("waf.runtime.xss_keywords")
+local xss_kw           = require("waf.runtime.xss_keywords")
+local logger           = require("core.logger")
 
 local _M = {
     total_key  = 'waf:score:meta:sample_count:',
@@ -48,7 +49,7 @@ end
 function _M.record_tokens(attack_type, tokens)
     if not attack_type or not tokens then return end
 
-    print("record_tokens start")
+    logger.debug("record_tokens start")
 
     dict_weight:incr(_M.total_key .. attack_type, 1, 0)
 

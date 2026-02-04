@@ -1,3 +1,5 @@
+local logger           = require("core.logger")
+
 local _M = {}
 
 local tokenize_pcre = {
@@ -16,7 +18,7 @@ local tokenize_pcre = {
 
 local function add(tokens, t)
     if t and #t > 0 then
-        print('拆解最小化token开始，min token：' .. t)
+        logger.debug('拆解最小化token开始，min token：' , t)
 
         tokens[t:lower()] = true
     end
@@ -40,7 +42,7 @@ function _M.tokenize(str)
         return tokens
     end
 
-    print('拆解最小化token开始，str: ' .. str)
+    logger.debug('拆解最小化token开始，str: ' , str)
 
     for m in ngx.re.gmatch(str, tokenize_pcre.common.comment_re, "jo") do
         add(tokens, "__comment:" .. m[0])
