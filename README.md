@@ -1,5 +1,6 @@
 # adapt-waf
-A HTTP Protocol Waf Detection；Designed with minimal resource footprint and rapid response, the Layer 7 WAF enables dynamic tuning of interception parameters to align with specific business needs
+A HTTP Protocol Waf Detection；Designed with minimal resource footprint and rapid response, the Layer 7 WAF enables dynamic tuning of interception parameters to align with specific business needs.
+
 基于攻击样本训练后的权重，计算请求参数最小化分词评分的waf；解决正则匹配类型的waf拦截不准的问题以及正则绕过。
 
 ## Install
