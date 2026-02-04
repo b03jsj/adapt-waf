@@ -1,5 +1,8 @@
 local logger           = require("core.logger")
 
+local ngx_re           = ngx.re
+local _gmatch          = ngx_re.gmatch
+
 local _M = {}
 
 local tokenize_pcre = {
@@ -15,27 +18,6 @@ local tokenize_pcre = {
     }
 }
 
-
-local function add(tokens, t)
-    if t and #t > 0 then
-        logger.debug('拆解最小化token开始，min token：' , t)
-
-        tokens[t:lower()] = true
-    end
-end
-
-local function is_pure_digit(t)
-    local len = #t
-    if len == 0 then return false end
-    for i = 1, len do
-        local c = t:byte(i)
-        if c < 48 or c > 57 then
-            return false
-        end
-    end
-    return true
-end
-
 function _M.tokenize(str)
     local tokens = {}
     if not str or str == "" then
@@ -44,20 +26,28 @@ function _M.tokenize(str)
 
     logger.debug('拆解最小化token开始，str: ' , str)
 
-    for m in ngx.re.gmatch(str, tokenize_pcre.common.comment_re, "jo") do
-        add(tokens, "__comment:" .. m[0])
+    for m in _gmatch(str, tokenize_pcre.common.comment_re, "jo") do
+        logger.debug('拆解最小化token，min token：' , m[0])
+
+        tokens["__comment:" .. m[0]] = true
     end
 
-    for m in ngx.re.gmatch(str, tokenize_pcre.common.op_re, "jo") do
-        add(tokens, "__op:" .. m[0])
+    for m in _gmatch(str, tokenize_pcre.common.op_re, "jo") do
+        logger.debug('拆解最小化token，min token：' , m[0])
+
+        tokens["__op:" .. m[0]] = true
     end
 
-    for m in ngx.re.gmatch(str, tokenize_pcre.common.number_re, "jo") do
-        add(tokens, "__num:" .. m[0])
+    for m in _gmatch(str, tokenize_pcre.common.number_re, "jo") do
+        logger.debug('拆解最小化token，min token：' , m[0])
+
+        tokens["__num:" .. m[0]] = true
     end
 
-    for m in ngx.re.gmatch(str, tokenize_pcre.common.word_re, "jo") do
-        add(tokens, "__word:" .. m[0])
+    for m in _gmatch(str, tokenize_pcre.common.word_re, "jo") do
+        logger.debug('拆解最小化token，min token：' , m[0])
+
+        tokens["__word:" .. m[0]] = true
     end
 
     return tokens

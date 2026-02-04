@@ -1,5 +1,7 @@
 local _M = {}
 
+local _lower  = string.lower
+
 function _M.normalize(str)
     if not str or str == "" then
         return ""
@@ -15,7 +17,7 @@ function _M.normalize(str)
              :gsub("&#39;", "'")
 
     -- 小写
-    str = string.lower(str)
+    str = _lower(str)
 
     return str
 end

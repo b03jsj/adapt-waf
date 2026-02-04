@@ -1,5 +1,6 @@
 local _M = {}
 
+local _sqrt      = math.sqrt
 local _table_c   = table.concat
 
 local dict_confidence = ngx.shared.waf_c
@@ -17,7 +18,7 @@ function _M.get(key)
         return nil
     end
 
-    return mean, math.sqrt(var)
+    return mean, _sqrt(var)
 end
 
 return _M

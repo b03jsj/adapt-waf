@@ -1,9 +1,12 @@
 local model = require("waf.runtime.confidence_model")
 
+local _abs  = math.abs
+local _exp  = math.exp
+
 local _M = {}
 
 local function sigmoid(x)
-    return 1 / (1 + math.exp(-x))
+    return 1 / (1 + _exp(-x))
 end
 
 -- 0 不像正常流量 --> 1 靠近正常流量
@@ -14,7 +17,7 @@ function _M.calc(features, attack_type)
     for k, v in pairs(features) do
         local mean, std = model.get(k)
         if mean and std then
-            local z = math.abs(v - mean) / std
+            local z = _abs(v - mean) / std
             zsum = zsum + z
             used = used + 1
         end
