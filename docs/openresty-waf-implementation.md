@@ -5,6 +5,9 @@
 本文件是实现规范源。  
 阈值、字段、状态机、日志结构、测试门禁以本文件为准。
 
+联调与 smoke 执行步骤见：
+[OpenResty WAF 联调与验证手册](./openresty-waf-validation.md)。
+
 <a id="impl-scope"></a>
 ## 0. 摘要与范围
 
@@ -35,16 +38,17 @@
 
 ### 1.1 热路径顺序（固定）
 
-1. 请求信息选择
-2. 统一规范化（`norm-v1`）
-3. 字段切分
-4. 高置信检测（`libinjection_sqli/xss`）
-5. 精确豁免匹配（`signature_exact -> detector_field`）
-6. 轻量规则与弱启发式
-7. `SGD` 辅助评分
-8. 策略聚合
-9. 动作执行
-10. 结构化日志与样本输出
+1. 访问前置检查（`access` 黑名单快速匹配）
+2. 请求信息选择
+3. 统一规范化（`norm-v1`）
+4. 字段切分
+5. 高置信检测（`libinjection_sqli/xss`）
+6. 精确豁免匹配（`signature_exact -> detector_field`）
+7. 轻量规则与弱启发式
+8. `SGD` 辅助评分
+9. 策略聚合
+10. 动作执行（当前请求）
+11. 结构化日志输出（`log` 阶段可更新信誉黑名单）
 
 ### 1.2 组件职责
 
@@ -52,6 +56,9 @@
   - 提供高置信 parser 信号
 - `exemption_matcher`
   - 处理误报放行（精确优先、放宽需审批）
+- `reputation_blacklist`
+  - 在 `access` 做 O(1) 快速命中拦截
+  - 在 `log` 基于事件更新短 TTL 信誉黑名单
 - `rule_engine`
   - 小规则集（规模受控）
 - `heuristic_signals`
@@ -62,17 +69,18 @@
 ### 1.3 `policy_decision_basis` 固定取值
 
 - `parser_hit_shadow`
-- `parser_hit_assist`
 - `parser_hit_assist_first_seen`
 - `parser_hit_assist_known_benign`
 - `parser_hit_assist_known_attack`
 - `parser_hit_block`
 - `parser_hit_exempted_exact`
 - `parser_hit_exempted_detector_field`
-- `parser_hit_auto_suggested`
+- `blacklist_hit`
+- `detector_unavailable_fail_open`
 - `weak_combo_only`
 - `model_only`
 - `timeout_fail_open`
+- `none`
 
 <a id="impl-modes"></a>
 ### 1.4 模式语义
@@ -137,7 +145,12 @@
 
 ### 1.6 硬拦截入口（默认）
 
-同时满足以下条件才 `block`：
+入口 A：黑名单快速命中（`access`）：
+
+1. `reputation_blacklist_hit = true`
+2. 条目未过期
+
+入口 B：高置信检测命中（`access`）：
 
 1. `libinjection` 命中
 2. 未命中豁免
@@ -226,19 +239,22 @@
 
 ### 3.2 运行时工件
 
-- 人工维护：`exemptions.yaml`
+- 规则主源：Java 审核通过后的 `waf_exemption_rule`
+- 可选文件源：`authoring_source`（YAML/JSON）
 - 运行时加载：`exemptions.compiled.json`
 
 ### 3.3 编译与发布链
 
 固定路径（Java 编排）：
 
-1. Java 审核页确认候选后更新 `exemptions.yaml`
-2. Java 执行：
-   - `waf-exempt compile --in exemptions.yaml --out exemptions.compiled.json.tmp.<ts>`
+1. Java 审核页确认候选后更新 `waf_exemption_rule` 并记录 `waf_review_audit`
+2. Java 发布服务执行编译：
+   - 默认从已审批规则仓储编译
+   - 若传入 `authoring_source`，则用 YAML/JSON 文件覆盖默认来源
 3. Java 校验：
-   - YAML 语法
-   - schema
+   - 文件源存在性（若启用）
+   - JSON / YAML 子集语法
+   - schema_version
    - 重复 key
    - scope 合法性
 4. Java 计算 `sha256/size`，生成 `publish_id + generation`
@@ -257,8 +273,6 @@
 
 ### 3.4 加载时机与热更新
 
-- `init_by_lua*`：
-  - 初始化元数据键
 - `init_worker_by_lua*`：
   - 加载本地只读快照
   - 启动定时器
@@ -314,13 +328,16 @@
 
 节点校验：
 
-- 管理面鉴权（内网 + mTLS + 签名）
-- `generation` 单调（回退请求需显式标记）
+- 管理面鉴权默认是“内网 + 请求签名 + 防重放”
+- `mTLS` 在当前实现中为可选增强，不是默认必开项
+- `generation` 必须单调递增
 - `sha256/size` 一致
 - JSON/schema/重复 key 通过
 
 回退语义：
 
+- OpenResty `/_waf/internal/exemptions/rollback` 当前返回 `501`
+- 真正的回退由 Java 控制面完成：读取历史快照并以新 `generation` 重新调用 `publish`
 - `rollback` 不会让 `generation` 递减
 - 回退是“历史稳定快照作为新内容重新发布”，`generation` 继续递增
 - 回退后 `compiled_sha256` 可回到历史值
@@ -434,6 +451,8 @@
 
 ### 5.3 关键动作矩阵（摘要）
 
+- 黑名单命中：
+  - 所有模式：`block`（`policy_decision_basis=blacklist_hit`）
 - 未豁免 parser 命中：
   - `shadow`：log
   - `assist`：high/critical（first-seen 才人工）
@@ -445,7 +464,23 @@
 - model-only：
   - sample/log，不阻断
 
-### 5.4 timeout fail-open
+### 5.4 `access + log` 双阶段策略（固定）
+
+- `access`：
+  - 先做黑名单快速匹配（`shared_dict` O(1)）
+  - 未命中则执行主检测链
+  - 只对当前请求做阻断决策
+- `log`：
+  - 基于最终信号更新信誉分
+  - 达到阈值后写入黑名单（短 TTL）
+  - 不回溯改变当前请求结果，仅影响后续请求
+- 默认键：
+  - `blacklist_key = ip + ua_hash`（预留 `session_id` 扩展位）
+- 风险控制：
+  - 避免“纯 IP”长期封禁（NAT 误伤）
+  - 黑名单条目必须有 TTL 与最大容量
+
+### 5.5 timeout fail-open
 
 - `hard_timeout_ms` 是检测链请求级硬预算
 - 任一检查点超时：
@@ -549,6 +584,13 @@
 
 ### 7.1 主配置（摘要+关键字段）
 
+说明：
+
+- 当前代码实际读取的是 JSON 配置文件：
+  - `modules/openresty/conf/waf-config.json`
+  - `modules/java-control-plane/conf/control-plane-config.json`
+- 下方 YAML 片段是“逻辑结构映射”，用于说明字段分层，不要求与落地文件格式完全同形。
+
 ```yaml
 waf:
   mode: shadow | assist | selective_enforce
@@ -588,9 +630,9 @@ waf:
     require_exact_scope: true
   management_api:
     enabled: true
-    bind: "127.0.0.1:9443"
+    bind: "0.0.0.0:18080"
     internal_only: true
-    mTLS_required: true
+    mTLS_required: false
     request_signature_required: true
     anti_replay_window_seconds: 300
   operations:
@@ -616,6 +658,16 @@ waf:
       shadow_observe_hours: 72
       promote_on_metrics: true
       require_manual_on_anomaly: true
+  reputation_blacklist:
+    enabled: true
+    dict_name: "waf_blacklist"
+    key_mode: ip_ua
+    key_delimiter: "|"
+    ttl_seconds: 600
+    max_entries: 200000
+    score_threshold: 3
+    allow_session_dimension: true
+    session_field_name: "x-session-id"
   capture:
     query_max_args: 64
     query_max_bytes: 8192
@@ -844,6 +896,8 @@ waf:
   - `detector/detector_signature/plugin_signals`
 - 豁免：
   - `exemption_applied/exemption_id/exemption_match_scope/exemption_match_key`
+- 信誉黑名单：
+  - `blacklist_key/blacklist_hit/blacklist_ttl_left/reputation_score/reputation_action`
 - 记忆与候选：
   - `pattern_key/pattern_state/first_seen_pattern`
   - `candidate_status/candidate_reason`
@@ -898,6 +952,9 @@ waf:
 - `waf_ingest_lag_seconds`
 - `waf_publish_partial_success_total`
 - `waf_publish_node_retry_total`
+- `waf_blacklist_hit_total`
+- `waf_blacklist_insert_total`
+- `waf_blacklist_evict_total`
 
 ### 9.4 运维告警（最小集）
 
@@ -925,6 +982,8 @@ waf:
 - timeout 触发后 `fail_open`
 - `multipart.filename` 全链路覆盖
 - `publish/status` 接口请求与响应字段完整可用
+- `access` 黑名单命中可直接拦截
+- `log` 阶段更新黑名单仅影响后续请求
 
 ### 10.2 误报与运营测试
 
@@ -946,6 +1005,10 @@ waf:
 - `application/json` 与 `application/x-www-form-urlencoded` 不得合并为同一 `pattern_key_v1`
 - `field_selector/signature_token` 缺失占位规则一致（`-`）
 
+当前最小可执行资产：
+
+- `scripts/verify_pattern_key_contract.sh`
+
 ### 10.4 性能测试
 
 - `amd64`、`arm64`
@@ -955,6 +1018,11 @@ waf:
 - 热更新传播 `<=10s`
 - Java ingest 在目标负载下满足 `<=60s` 可见性
 - MySQL 分区删除不影响在线查询 SLA
+- 黑名单快速匹配对 `access` 链路增量 `p99` 在预算内
+
+当前最小可执行资产：
+
+- `scripts/openresty_access_perf_smoke.sh`
 
 ### 10.5 可靠性测试
 
@@ -963,6 +1031,11 @@ waf:
 - MySQL 短时抖动时 ingest 背压生效，不阻塞 OpenResty
 - first-seen 判定对重试/重复日志保持稳定（不重复 first-seen）
 - 乱序日志不会触发同一 `pattern_key_v1` 多次 first-seen
+- 黑名单容量到上限时淘汰策略生效且不阻塞请求
+
+当前最小可执行资产：
+
+- `scripts/openresty_admin_publish_smoke.sh`
 
 ### 10.6 安全测试
 
@@ -979,7 +1052,7 @@ waf:
 - 无 `Content-Length` body 不深度解析
 - 大包不做全量检测
 - 不承诺覆盖所有上下文型/二阶攻击
-- 发布接口仅管理面可访问，必须启用 mTLS 与签名
+- 发布接口仅管理面可访问，默认启用请求签名与防重放；`mTLS` 作为可选增强开启
 
 ---
 
@@ -988,11 +1061,19 @@ waf:
 
 [返回总览](./openresty-waf-overview.md#8-发布与回退骨架)
 
+当前实现默认运行配置：
+
+- OpenResty：`modules/openresty/conf/waf-config.json`
+- Java：`modules/java-control-plane/conf/control-plane-config.json`
+- 联调步骤与 smoke 命令：见 [OpenResty WAF 联调与验证手册](./openresty-waf-validation.md)
+
 ### 11.1 日常误报处理（热更新通道）
 
 1. 在 Java 候选页批量确认 `auto_suggested` 或人工确认误报
 2. Java 更新 `waf_exemption_rule` 并记录 `waf_review_audit`
-3. Java 导出 `exemptions.yaml` 并执行 `waf-exempt compile`
+3. Java 发布服务编译运行时快照：
+   - 默认从已审批规则仓储编译
+   - 如传入 `authoring_source`，则用文件源覆盖
 4. Java 生成 `publish_id + generation` 并推送各节点 `publish` 接口
 5. 节点原子落盘 `compiled.json`，worker 应用新 generation
 6. Java 查询 `status` 收敛节点状态，失败节点持续重试
@@ -1011,6 +1092,7 @@ waf:
 - 豁免回退：
   - Java 选择历史稳定快照重新发布为新 `generation`
   - 校验所有节点 generation 收敛
+  - OpenResty 本地 `rollback` 接口默认返回 `501`，不承担历史版本管理
   - 说明：回退不是 `generation` 递减，而是历史稳定快照作为新内容重发，`generation` 继续单调递增
   - 回退后现象：`generation` 变大，但 `compiled_sha256` 可回到历史值
 - 正式发布回退：
@@ -1025,6 +1107,10 @@ waf:
 - 发布部分失败：
   - 标记批次 `partial_success`
   - 仅重试失败节点，不影响已成功节点
+- 黑名单误封突增：
+  - 检查 `blacklist_key` 维度是否过粗（如仅 IP）
+  - 调低 `score_threshold` 触发权重或缩短 `ttl_seconds`
+  - 必要时临时清空黑名单并保留审计
 - timeout_fail_open 突增：
   - 检查热点阶段
   - 缩减检测预算或降级低优先插件
@@ -1032,6 +1118,83 @@ waf:
   - 停止晋级
   - 保持旧 stable
   - 排查数据分布漂移与误报变化
+
+---
+
+<a id="impl-dev-sequence"></a>
+## 12. 开发实施顺序与工程组织
+
+[返回总览](./openresty-waf-overview.md#8-发布与回退骨架)
+
+### 12.1 目录拆分（固定）
+
+OpenResty 统一采用一个入口进程，在同一份 `nginx.conf` 内加载两个 `server` 块：
+
+- `modules/openresty/`
+  - `conf/nginx.conf`
+    - `server:8080` 业务拦截链路（`access/log`）
+    - `server:18080` 管理接口（`publish/status/rollback`）
+  - `lua/waf/interceptor/`
+    - 仅放检测链、黑名单匹配、策略执行代码
+  - `lua/waf/admin/`
+    - 仅放管理接口与快照生效逻辑
+- `modules/java-control-plane/`
+  - 仅放 ingest、审核页面、编译发布编排、MySQL 持久化
+- `modules/shared-spec/`
+  - 放 OpenAPI、日志 schema、`pattern_key_v1` 构造规范
+
+### 12.2 开发顺序（固定）
+
+1. 固化契约：
+   - `publish/status/rollback` 接口 schema
+   - `NDJSON` 日志 schema
+   - `pattern_key_v1` 构造函数规范
+2. OpenResty 统一入口与拦截端：
+   - 搭建单入口 `nginx.conf` 与双 `server` 块
+   - `access` 黑名单快速匹配
+   - 高置信检测链与阻断
+   - `log` 信誉更新（只影响后续请求）
+3. OpenResty 管理端：
+   - `publish/status/rollback`
+   - 快照校验、原子落盘、generation 生效
+4. Java ingest 与 MySQL：
+   - 文件 checkpoint、幂等入库
+   - `first_seen_pattern` 判定与模式状态更新
+5. Java 审核与发布编排：
+   - `first-seen` 与 `auto_suggested` 页面
+   - 编译、推送、节点状态收敛、失败重试
+6. 端到端联调：
+   - 黑名单命中链路
+   - parser 阻断链路
+   - rollback 新代次语义
+7. 压测与灰度：
+   - `access` 时延预算
+   - 黑名单容量与淘汰行为
+   - `shadow -> assist -> selective_enforce`
+
+### 12.3 代码组织规范（固定）
+
+- 接口方法必须有注释（请求字段、返回字段、错误语义、幂等性）。
+- 业务方法拆分到单独文件，避免超大文件。
+- 复用优先：公共逻辑沉淀到 `shared-spec` 或公共工具模块，禁止复制实现。
+- 关键常量统一管理（键名、状态名、TTL、阈值）。
+
+### 12.4 OpenResty 开发最佳实践（必须遵守）
+
+- `access`/`log` 阶段禁止阻塞 I/O（不读写外部数据库、不做磁盘随机读）。
+- 请求路径禁止 `io.open` 写日志，必须使用 Nginx 缓冲日志机制。
+- 黑名单查询必须是 `shared_dict` O(1) 访问，且配置容量上限与 TTL。
+- 管理接口写快照必须 `tmp + rename` 原子替换。
+- 正则必须受控使用，启用 JIT 与缓存策略。
+- 大对象分配与 JSON 解析避免放在高频热路径中重复创建。
+- 定时任务与共享状态更新必须可观测（指标 + 错误日志）。
+
+### 12.5 复用清单（建议）
+
+- `pattern_key_v1` 构造函数：OpenResty 与 Java 共用同一规范实现。
+- `generation` 与发布状态模型：管理接口、Java 发布器、页面统一复用。
+- 日志字段常量：拦截端与 ingest 端复用，避免字段名漂移。
+- 错误码与告警码：管理接口与 Java 编排统一编码。
 
 ---
 

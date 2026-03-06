@@ -4,7 +4,8 @@
 > - [OpenResty WAF 总览（流程骨架版）](./openresty-waf-overview.md)
 > - [OpenResty WAF 详细实现说明](./openresty-waf-implementation.md)
 >
-> 本文档保留为历史完整版/对照版。
+> 本文档保留为历史完整版/对照版，不再作为当前代码实现的规范源。
+> 当前实现请以两份主入口文档和 `modules/shared-spec/` 契约为准。
 
 ## 1. 背景与目标
 

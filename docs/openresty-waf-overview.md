@@ -10,6 +10,9 @@
 详细实现、配置字段、日志 schema、测试门禁请看：
 [OpenResty WAF 详细实现说明](./openresty-waf-implementation.md)。
 
+联调、验收与 smoke 脚本入口请看：
+[OpenResty WAF 联调与验证手册](./openresty-waf-validation.md)。
+
 ## 目录
 
 - [1. 背景与目标](#1-背景与目标)
@@ -53,22 +56,25 @@
 10. 运营与审核链路只使用 `MySQL 8.0+`，不引入 ES/ClickHouse。
 11. 日志展示、候选审核、豁免发布全部在 Java 层完成。
 12. OpenResty 不连数据库，只负责日志落盘与豁免快照接收。
-13. 规则、模型、主配置仍走正式发布与回退流程。
+13. 主拦截在 `access`，`log` 仅做信誉黑名单更新（影响后续请求）。
+14. 规则、模型、主配置仍走正式发布与回退流程。
+15. OpenResty 采用单入口配置，按 `interceptor/admin` 两个目录拆代码并用双 `server` 块分流。
+16. OpenResty 与 Java 当前均以配置文件作为主配置入口，分别读取 `modules/openresty/conf/waf-config.json` 与 `modules/java-control-plane/conf/control-plane-config.json`。
 
-详细实现： [§1 检测链](./openresty-waf-implementation.md#impl-pipeline)、[§3 豁免热更新](./openresty-waf-implementation.md#impl-exemption-hot-reload)、[§5 聚合与超时](./openresty-waf-implementation.md#impl-policy-aggregation)、[§6 SGD](./openresty-waf-implementation.md#impl-sgd)、[§8 Java 运营链路](./openresty-waf-implementation.md#impl-java-mysql)
+详细实现： [§1 检测链](./openresty-waf-implementation.md#impl-pipeline)、[§3 豁免热更新](./openresty-waf-implementation.md#impl-exemption-hot-reload)、[§5 聚合与超时](./openresty-waf-implementation.md#impl-policy-aggregation)、[§6 SGD](./openresty-waf-implementation.md#impl-sgd)、[§8 Java 运营链路](./openresty-waf-implementation.md#impl-java-mysql)、[§11 运行手册](./openresty-waf-implementation.md#impl-runbook)、[联调与验证手册](./openresty-waf-validation.md)
 
 ## 3. 运行时主流程骨架（10步）
 
-1. 请求信息选择（URI/query/白名单头/受控 body）
-2. 统一规范化（`norm-v1`）
-3. 字段切分
-4. 高置信检测（`libinjection_sqli/xss`）
-5. 精确豁免匹配（`signature_exact` -> `detector_field`）
-6. 轻量规则与弱启发式
-7. `SGD` 辅助评分（Lua FFI）
-8. 策略聚合（分类、告警等级、动作）
-9. 动作执行（allow/log/block）
-10. 结构化日志与样本输出
+1. `access` 黑名单快速匹配（命中可直接拦截）
+2. 请求信息选择（URI/query/白名单头/受控 body）
+3. 统一规范化（`norm-v1`）
+4. 字段切分
+5. 高置信检测（`libinjection_sqli/xss`）
+6. 精确豁免匹配（`signature_exact` -> `detector_field`）
+7. 轻量规则与弱启发式
+8. `SGD` 辅助评分（Lua FFI）
+9. 策略聚合与动作执行（allow/log/block）
+10. `log` 阶段输出日志并更新信誉黑名单（影响后续请求）
 
 详细实现： [§1 检测链实现细则](./openresty-waf-implementation.md#impl-pipeline)
 
@@ -105,6 +111,10 @@
 3. 处于 `selective_enforce`
 4. 不在显式高误报字段保护范围
 5. 未触发 `timeout_fail_open`
+
+另一个硬拦截入口：
+
+- `access` 黑名单命中（条目未过期）
 
 默认不是硬拦截：
 
@@ -158,11 +168,13 @@
 
 ### 通道 A：豁免热更新（高频）
 
-- Java 审核通过后执行 `exemptions.yaml -> compile -> compiled`
+- Java 审核通过后，以“已审批规则”为主源编译运行时快照
+- 如指定 `authoring_source`，可用文件源覆盖默认编译入口
 - Java 推送整包快照 + `generation` 到每个 OpenResty 节点
 - 节点原子发布，worker 自动感知
 - 只推进 `exemptions_generation`
 - 回退时 `generation` 仍单调递增（旧快照以新代次重发）
+- OpenResty 的 `/_waf/internal/exemptions/rollback` 默认不执行业务回退；真正回退由 Java 控制面重发历史快照完成
 
 ### 通道 B：正式发布（低频）
 
@@ -171,6 +183,8 @@
 - 支持版本回退
 
 详细实现： [§3 豁免热更新](./openresty-waf-implementation.md#impl-exemption-hot-reload)、[§11 运行手册](./openresty-waf-implementation.md#impl-runbook)
+开发顺序： [§12 开发实施顺序与工程组织](./openresty-waf-implementation.md#impl-dev-sequence)
+联调与验证： [OpenResty WAF 联调与验证手册](./openresty-waf-validation.md)
 
 ## 9. 性能与资源目标
 
@@ -232,3 +246,10 @@
 ### Q4：为什么检测超时要 `fail-open`？
 
 避免因安全链路资源抖动造成业务误阻断。超时事件仍会高优告警并可追踪。
+
+### Q5：当前应该看哪份运行配置？
+
+以代码里的 JSON 配置文件为准：
+
+- OpenResty：`modules/openresty/conf/waf-config.json`
+- Java：`modules/java-control-plane/conf/control-plane-config.json`

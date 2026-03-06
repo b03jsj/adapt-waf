@@ -1,0 +1,6 @@
+# method	route_key	content_type	surface	field_name	json_path	detector	signature	expected
+POST	/api/search	application/json	json	-	$.keyword	libinjection_sqli	fp_sql_001	POST|/api/search|application/json|json|$.keyword|libinjection_sqli|fp_sql_001
+GET	/search	application/x-www-form-urlencoded	query	q	-	libinjection_xss	-	GET|/search|application/x-www-form-urlencoded|query|q|libinjection_xss|-
+POST	/api/a|b	text/plain	header	x-a|b	-	libinjection_sqli	fp|01	POST|/api/a%7Cb|text/plain|header|x-a%7Cb|libinjection_sqli|fp%7C01
+POST	/api/doc	application/json	json	keyword	-	libinjection_xss	-	POST|/api/doc|application/json|json|keyword|libinjection_xss|-
+PUT	/api/profile	application/json	json	-	-	libinjection_sqli	-	PUT|/api/profile|application/json|json|-|libinjection_sqli|-

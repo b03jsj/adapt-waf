@@ -1,0 +1,68 @@
+{
+  "runtime": {
+    "enable_api_server": true,
+    "enable_ingest_loop": true,
+    "enable_auto_suggest_loop": true
+  },
+  "mysql": {
+    "url": "jdbc:mysql://127.0.0.1:3306/waf?useUnicode=true&characterEncoding=utf8",
+    "user": "waf",
+    "password": "waf"
+  },
+  "ingest": {
+    "source_node": "local-node",
+    "alert_log_path": "/var/log/nginx/waf-alert.ndjson",
+    "batch_size": 2000,
+    "loop_interval_seconds": 5
+  },
+  "auto_suggest": {
+    "window_hours": 168,
+    "loop_interval_seconds": 300,
+    "min_hits": 200,
+    "min_2xx_ratio": 0.995,
+    "min_unique_ip": 20,
+    "max_single_ip_ratio": 0.2,
+    "min_ip_entropy": 2.5,
+    "min_active_days": 2,
+    "max_peak_day_ratio": 0.7
+  },
+  "sgd_dataset": {
+    "window_hours": 168,
+    "positive_limit": 50000,
+    "negative_limit": 100000,
+    "hard_negative_limit": 30000,
+    "normalization_profile": "norm-v1",
+    "include_builtin_seeds": true,
+    "output_dir": "./out/sgd-dataset",
+    "extra_sqli_payload_path": null,
+    "extra_xss_payload_path": null
+  },
+  "sgd_gate": {
+    "min_positive_samples": 1000,
+    "min_negative_samples": 5000,
+    "min_hard_negative_samples": 1000,
+    "min_precision_at_assist_threshold": 0.95,
+    "max_clean_false_positive_rate": 0.001,
+    "max_hard_negative_false_positive_rate": 0.01,
+    "shadow_observe_min_hours": 72,
+    "shadow_max_false_positive_rate": 0.01,
+    "shadow_max_regression_delta": 0.02
+  },
+  "exemptions": {
+    "authoring_source": null
+  },
+  "review_api": {
+    "host": "0.0.0.0",
+    "port": 28080,
+    "token": "",
+    "batch_worker_threads": 2
+  },
+  "publish": {
+    "nodes": [
+      "local=http://127.0.0.1:18080"
+    ],
+    "shared_secret": "change_me",
+    "max_attempts": 3,
+    "retry_interval_ms": 1000
+  }
+}

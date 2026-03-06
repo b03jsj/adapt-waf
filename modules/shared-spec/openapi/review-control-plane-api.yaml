@@ -1,0 +1,455 @@
+openapi: 3.0.3
+info:
+  title: Adapt WAF Review Control Plane API
+  version: 0.1.0
+  description: |
+    Java control-plane API for review, publish and rollback orchestration.
+    When `review_api.token` is configured, callers must pass `X-Waf-Api-Token`.
+servers:
+  - url: http://127.0.0.1:28080
+paths:
+  /api/v1/review/healthz:
+    get:
+      summary: 健康检查
+      security:
+        - ApiToken: []
+      responses:
+        "200":
+          description: OK
+  /api/v1/review/summary:
+    get:
+      summary: 查询审核面板关键统计
+      security:
+        - ApiToken: []
+      responses:
+        "200":
+          description: OK
+  /api/v1/review/first-seen:
+    get:
+      summary: 查询 first-seen 队列
+      security:
+        - ApiToken: []
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, default: 100, minimum: 1, maximum: 500 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0, minimum: 0 }
+        - in: query
+          name: route_key
+          schema: { type: string }
+        - in: query
+          name: detector
+          schema: { type: string }
+        - in: query
+          name: method
+          schema: { type: string }
+        - in: query
+          name: content_type
+          schema: { type: string }
+        - in: query
+          name: surface
+          schema: { type: string }
+        - in: query
+          name: alert_level
+          schema:
+            type: string
+            enum: [critical, high, low, none]
+        - in: query
+          name: from_time
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: to_time
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: format
+          schema:
+            type: string
+            enum: [json, csv]
+            default: json
+      responses:
+        "200":
+          description: OK
+  /api/v1/review/candidates:
+    get:
+      summary: 查询候选列表
+      security:
+        - ApiToken: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [auto_suggested, approved, rejected, expired]
+            default: auto_suggested
+        - in: query
+          name: limit
+          schema: { type: integer, default: 100, minimum: 1, maximum: 500 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0, minimum: 0 }
+        - in: query
+          name: reason_like
+          schema: { type: string }
+        - in: query
+          name: pattern_key_like
+          schema: { type: string }
+        - in: query
+          name: updated_from
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: updated_to
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: format
+          schema:
+            type: string
+            enum: [json, csv]
+            default: json
+      responses:
+        "200":
+          description: OK
+  /api/v1/review/candidates/{id}/approve:
+    post:
+      summary: 审批通过单个候选
+      security:
+        - ApiToken: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                operator: { type: string }
+                reason: { type: string }
+                ticket_id: { type: string }
+                match_scope:
+                  type: string
+                  enum: [signature_exact, detector_field]
+                expires_at:
+                  type: string
+                  format: date-time
+      responses:
+        "200":
+          description: OK
+  /api/v1/review/candidates/{id}/reject:
+    post:
+      summary: 拒绝单个候选
+      security:
+        - ApiToken: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                operator: { type: string }
+                reason: { type: string }
+                ticket_id: { type: string }
+                pattern_state:
+                  type: string
+                  enum: [unknown, attack_confirmed]
+      responses:
+        "200":
+          description: OK
+  /api/v1/review/candidates/batch/approve:
+    post:
+      summary: 批量审批候选
+      security:
+        - ApiToken: []
+      parameters:
+        - in: query
+          name: format
+          schema:
+            type: string
+            enum: [json, csv]
+            default: json
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [candidate_ids, operator, reason]
+              properties:
+                candidate_ids:
+                  type: array
+                  items: { type: integer, minimum: 1 }
+                operator: { type: string }
+                reason: { type: string }
+                ticket_id: { type: string }
+                match_scope:
+                  type: string
+                  enum: [signature_exact, detector_field]
+                expires_at:
+                  type: string
+                  format: date-time
+      responses:
+        "200":
+          description: OK
+  /api/v1/review/candidates/batch/reject:
+    post:
+      summary: 批量拒绝候选
+      security:
+        - ApiToken: []
+      parameters:
+        - in: query
+          name: format
+          schema:
+            type: string
+            enum: [json, csv]
+            default: json
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [candidate_ids, operator, reason]
+              properties:
+                candidate_ids:
+                  type: array
+                  items: { type: integer, minimum: 1 }
+                operator: { type: string }
+                reason: { type: string }
+                ticket_id: { type: string }
+                pattern_state:
+                  type: string
+                  enum: [unknown, attack_confirmed]
+      responses:
+        "200":
+          description: OK
+  /api/v1/review/candidates/batch/approve-async:
+    post:
+      summary: 异步批量审批候选
+      security:
+        - ApiToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [candidate_ids, operator, reason]
+              properties:
+                candidate_ids:
+                  type: array
+                  items: { type: integer, minimum: 1 }
+                operator: { type: string }
+                reason: { type: string }
+                ticket_id: { type: string }
+                match_scope:
+                  type: string
+                  enum: [signature_exact, detector_field]
+                expires_at:
+                  type: string
+                  format: date-time
+      responses:
+        "202":
+          description: accepted
+  /api/v1/review/candidates/batch/reject-async:
+    post:
+      summary: 异步批量拒绝候选
+      security:
+        - ApiToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [candidate_ids, operator, reason]
+              properties:
+                candidate_ids:
+                  type: array
+                  items: { type: integer, minimum: 1 }
+                operator: { type: string }
+                reason: { type: string }
+                ticket_id: { type: string }
+                pattern_state:
+                  type: string
+                  enum: [unknown, attack_confirmed]
+      responses:
+        "202":
+          description: accepted
+  /api/v1/review/candidates/batch/{operation_id}:
+    get:
+      summary: 查询异步批量任务状态
+      security:
+        - ApiToken: []
+      parameters:
+        - in: path
+          name: operation_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: not found
+  /api/v1/review/candidates/batch:
+    get:
+      summary: 查询异步批量任务列表
+      security:
+        - ApiToken: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [running, success, partial_success, failed]
+        - in: query
+          name: limit
+          schema: { type: integer, default: 100, minimum: 1, maximum: 500 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0, minimum: 0 }
+      responses:
+        "200":
+          description: OK
+  /api/v1/review/candidates/batch/{operation_id}/items:
+    get:
+      summary: 查询异步批量任务明细
+      security:
+        - ApiToken: []
+      parameters:
+        - in: path
+          name: operation_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 200, minimum: 1, maximum: 2000 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0, minimum: 0 }
+        - in: query
+          name: format
+          schema:
+            type: string
+            enum: [json, csv]
+            default: json
+      responses:
+        "200":
+          description: OK
+  /api/v1/review/audit:
+    get:
+      summary: 查询审核审计日志
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, default: 100, minimum: 1, maximum: 500 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0, minimum: 0 }
+      responses:
+        "200":
+          description: OK
+  /api/v1/review/publish:
+    get:
+      summary: 查询发布历史
+      security:
+        - ApiToken: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [running, partial_success, success, failed]
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50, minimum: 1, maximum: 500 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0, minimum: 0 }
+      responses:
+        "200":
+          description: OK
+    post:
+      summary: 发布豁免快照
+      security:
+        - ApiToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [generation, operator, reason]
+              properties:
+                generation: { type: integer, minimum: 1 }
+                operator: { type: string }
+                reason: { type: string }
+                authoring_source:
+                  type: string
+                  description: 可选。指定 YAML/JSON 规则源文件路径，优先于数据库规则编译。
+                nodes:
+                  type: array
+                  items: { type: string }
+      responses:
+        "200":
+          description: OK
+  /api/v1/review/rollback:
+    post:
+      summary: 回退重发（旧内容新代次）
+      security:
+        - ApiToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rollback_from_generation, new_generation, operator, reason]
+              properties:
+                rollback_from_generation: { type: integer, minimum: 1 }
+                new_generation: { type: integer, minimum: 1 }
+                operator: { type: string }
+                reason: { type: string }
+                nodes:
+                  type: array
+                  items: { type: string }
+      responses:
+        "200":
+          description: OK
+  /api/v1/review/publish/{publish_id}/nodes:
+    get:
+      summary: 查询发布任务节点结果
+      security:
+        - ApiToken: []
+      parameters:
+        - in: path
+          name: publish_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+components:
+  securitySchemes:
+    ApiToken:
+      type: apiKey
+      in: header
+      name: X-Waf-Api-Token
+      description: 当 `review_api.token` 配置非空时必须携带。

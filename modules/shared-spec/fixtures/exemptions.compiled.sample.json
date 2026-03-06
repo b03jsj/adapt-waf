@@ -1,0 +1,10 @@
+{
+  "generation": 1,
+  "publish_id": "pub_fixture",
+  "schema_version": "exemptions-compiled-v1",
+  "rules": [],
+  "pattern_state_index": {
+    "benign_confirmed": [],
+    "attack_confirmed": []
+  }
+}

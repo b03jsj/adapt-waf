@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adapt-waf.local/schemas/exemptions-publish-request.schema.json",
+  "title": "ExemptionsPublishRequest",
+  "type": "object",
+  "required": [
+    "publish_id",
+    "generation",
+    "compiled_sha256",
+    "compiled_size",
+    "compiled_content_base64",
+    "operator",
+    "created_at"
+  ],
+  "properties": {
+    "publish_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generation": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "compiled_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[a-fA-F0-9]{64}$"
+    },
+    "compiled_size": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "compiled_content_base64": {
+      "type": "string",
+      "minLength": 1
+    },
+    "operator": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reason": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": false
+}

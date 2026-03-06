@@ -1,0 +1,154 @@
+openapi: 3.0.3
+info:
+  title: OpenResty WAF Management API
+  version: 1.0.0
+  description: |
+    Internal management API for exemption snapshot publish/status/rollback.
+    Current implementation defaults to request-signature + anti-replay authorization.
+    mTLS is optional and controlled by OpenResty config.
+servers:
+  - url: http://{host}:18080
+    variables:
+      host:
+        default: waf-node.internal
+paths:
+  /_waf/internal/exemptions/publish:
+    post:
+      summary: Publish exemption snapshot
+      operationId: publishExemptions
+      security:
+        - RequestSignature: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/exemptions-publish-request.schema.json'
+      responses:
+        '200':
+          description: Snapshot accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishResponse'
+  /_waf/internal/exemptions/status:
+    get:
+      summary: Get current generation/apply status
+      operationId: getExemptionsStatus
+      security:
+        - RequestSignature: []
+      responses:
+        '200':
+          description: Current runtime status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+  /_waf/internal/exemptions/rollback:
+    post:
+      summary: Placeholder endpoint; real rollback is orchestrated by Java control plane by republishing historical content with a new generation
+      operationId: rollbackExemptions
+      security:
+        - RequestSignature: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RollbackRequest'
+      responses:
+        '501':
+          description: Rollback is orchestrated by Java control plane via publish republish flow
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  securitySchemes:
+    RequestSignature:
+      type: apiKey
+      in: header
+      name: X-Waf-Signature
+      description: |
+        Signature authorization uses the request headers:
+        `X-Waf-Signature`, `X-Waf-Timestamp`, `X-Waf-Nonce`.
+  schemas:
+    PublishResponse:
+      type: object
+      required:
+        - accepted
+        - generation
+        - publish_id
+      properties:
+        accepted:
+          type: boolean
+        generation:
+          type: integer
+          format: int64
+        publish_id:
+          type: string
+        message:
+          type: string
+    StatusResponse:
+      type: object
+      required:
+        - node_id
+        - current_generation
+        - target_generation
+        - last_apply_status
+      properties:
+        node_id:
+          type: string
+        current_generation:
+          type: integer
+          format: int64
+        target_generation:
+          type: integer
+          format: int64
+        last_apply_status:
+          type: string
+          enum: [ok, failed, pending]
+        last_error:
+          type: string
+        last_apply_ts:
+          type: string
+          format: date-time
+        runtime_exemptions:
+          type: object
+          properties:
+            generation:
+              type: integer
+              format: int64
+            rule_count:
+              type: integer
+            last_error:
+              type: string
+        runtime_detector:
+          type: object
+    RollbackRequest:
+      type: object
+      required:
+        - publish_id
+        - generation
+        - rollback_from_generation
+        - operator
+      properties:
+        publish_id:
+          type: string
+        generation:
+          type: integer
+          format: int64
+        rollback_from_generation:
+          type: integer
+          format: int64
+        operator:
+          type: string
+        reason:
+          type: string
+    ErrorResponse:
+      type: object
+      properties:
+        accepted:
+          type: boolean
+        error:
+          type: string
